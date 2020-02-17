@@ -13,12 +13,6 @@ repositories {
 }
 def homePath = System.properties['user.home']
 
-configurations {
-    all {
-        exclude module: 'httpclient'
-    }
-}
-
 android {
     compileSdkVersion 28
 

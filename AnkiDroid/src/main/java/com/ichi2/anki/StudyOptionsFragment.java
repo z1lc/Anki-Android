@@ -17,11 +17,16 @@ package com.ichi2.anki;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.os.Bundle;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import androidx.fragment.app.Fragment;
 import androidx.appcompat.widget.Toolbar;
+
+import android.text.Spanned;
 import android.text.method.LinkMovementMethod;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -39,6 +44,7 @@ import com.ichi2.compat.CompatHelper;
 import com.ichi2.libanki.Collection;
 import com.ichi2.libanki.Utils;
 import com.ichi2.themes.StyledProgressDialog;
+import com.ichi2.utils.HtmlUtils;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -76,6 +82,7 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
     /**
      * UI elements for "Study Options" view
      */
+    @Nullable
     private View mStudyOptionsView;
     private View mDeckInfoLayout;
     private Button mButtonStart;
@@ -169,6 +176,13 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
         return f;
     }
 
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (getArguments() != null) {
+            mLoadWithDeckOptions = getArguments().getBoolean("withDeckOptions");
+        }
+    }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -176,20 +190,17 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
             // Currently in a layout without a container, so no reason to create our view.
             return null;
         }
-        restorePreferences();
-        mStudyOptionsView = inflater.inflate(R.layout.studyoptions_fragment, container, false);
+        View studyOptionsView = inflater.inflate(R.layout.studyoptions_fragment, container, false);
+        mStudyOptionsView = studyOptionsView;
         mFragmented = getActivity().getClass() != StudyOptionsActivity.class;
-        initAllContentViews();
-        if (getArguments() != null) {
-            mLoadWithDeckOptions = getArguments().getBoolean("withDeckOptions");
-        }
-        mToolbar = (Toolbar) mStudyOptionsView.findViewById(R.id.studyOptionsToolbar);
+        initAllContentViews(studyOptionsView);
+        mToolbar = (Toolbar) studyOptionsView.findViewById(R.id.studyOptionsToolbar);
         mToolbar.inflateMenu(R.menu.study_options_fragment);
         if (mToolbar != null) {
             configureToolbar();
         }
         refreshInterface(true);
-        return mStudyOptionsView;
+        return studyOptionsView;
     }
 
 
@@ -245,24 +256,24 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
     }
 
 
-    private void initAllContentViews() {
+    private void initAllContentViews(@NonNull View studyOptionsView) {
         if (mFragmented) {
-            mStudyOptionsView.findViewById(R.id.studyoptions_gradient).setVisibility(View.VISIBLE);
+            studyOptionsView.findViewById(R.id.studyoptions_gradient).setVisibility(View.VISIBLE);
         }
-        mDeckInfoLayout = mStudyOptionsView.findViewById(R.id.studyoptions_deckinformation);
-        mTextDeckName = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_deck_name);
-        mTextDeckDescription = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_deck_description);
+        mDeckInfoLayout = studyOptionsView.findViewById(R.id.studyoptions_deckinformation);
+        mTextDeckName = (TextView) studyOptionsView.findViewById(R.id.studyoptions_deck_name);
+        mTextDeckDescription = (TextView) studyOptionsView.findViewById(R.id.studyoptions_deck_description);
         // make links clickable
         mTextDeckDescription.setMovementMethod(LinkMovementMethod.getInstance());
-        mButtonStart = (Button) mStudyOptionsView.findViewById(R.id.studyoptions_start);
-        mTextCongratsMessage = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_congrats_message);
+        mButtonStart = (Button) studyOptionsView.findViewById(R.id.studyoptions_start);
+        mTextCongratsMessage = (TextView) studyOptionsView.findViewById(R.id.studyoptions_congrats_message);
         // Code common to both fragmented and non-fragmented view
-        mTextTodayNew = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_new);
-        mTextTodayLrn = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_lrn);
-        mTextTodayRev = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_rev);
-        mTextNewTotal = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_total_new);
-        mTextTotal = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_total);
-        mTextETA = (TextView) mStudyOptionsView.findViewById(R.id.studyoptions_eta);
+        mTextTodayNew = (TextView) studyOptionsView.findViewById(R.id.studyoptions_new);
+        mTextTodayLrn = (TextView) studyOptionsView.findViewById(R.id.studyoptions_lrn);
+        mTextTodayRev = (TextView) studyOptionsView.findViewById(R.id.studyoptions_rev);
+        mTextNewTotal = (TextView) studyOptionsView.findViewById(R.id.studyoptions_total_new);
+        mTextTotal = (TextView) studyOptionsView.findViewById(R.id.studyoptions_total);
+        mTextETA = (TextView) studyOptionsView.findViewById(R.id.studyoptions_eta);
         mButtonStart.setOnClickListener(mButtonClickListener);
     }
 
@@ -483,13 +494,6 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
         }
     }
 
-
-    public SharedPreferences restorePreferences() {
-        SharedPreferences preferences = AnkiDroidApp.getSharedPrefs(getActivity().getBaseContext());
-        return preferences;
-    }
-
-
     private void refreshInterfaceAndDecklist(boolean resetSched) {
         refreshInterface(resetSched, true);
     }
@@ -549,8 +553,15 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
                         Timber.e("StudyOptionsFragment.mRefreshFragmentListener :: can't refresh");
                         return;
                     }
+
+                    //#5506 If we have no view, short circuit all UI logic
+                    if (mStudyOptionsView == null) {
+                        tryOpenCramDeckOptions();
+                        return;
+                    }
+
                     // Reinitialize controls incase changed to filtered deck
-                    initAllContentViews();
+                    initAllContentViews(mStudyOptionsView);
                     // Set the deck name
                     String fullName;
                     JSONObject deck = getCol().getDecks().current();
@@ -577,12 +588,10 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
                         throw new RuntimeException(e);
                     }
 
-                    // open cram deck option if deck is opened for the first time
-                    if (mLoadWithDeckOptions) {
-                        openFilteredDeckOptions(mLoadWithDeckOptions);
-                        mLoadWithDeckOptions = false;
+                    if (tryOpenCramDeckOptions()) {
                         return;
                     }
+
                     // Switch between the empty view, the ordinary view, and the "congratulations" view
                     boolean isDynamic = deck.optInt("dyn", 0) != 0;
                     if (totalCards == 0 && !isDynamic) {
@@ -618,7 +627,7 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
                         desc = getCol().getDecks().getActualDescription();
                     }
                     if (desc.length() > 0) {
-                        mTextDeckDescription.setText(CompatHelper.getCompat().fromHtml(desc));
+                        mTextDeckDescription.setText(formatDescription(desc));
                         mTextDeckDescription.setVisibility(View.VISIBLE);
                     } else {
                         mTextDeckDescription.setVisibility(View.GONE);
@@ -684,6 +693,28 @@ public class StudyOptionsFragment extends Fragment implements Toolbar.OnMenuItem
                 }
             }
         };
+    }
+
+    /** Open cram deck option if deck is opened for the first time
+     * @return Whether we opened the deck options */
+    private boolean tryOpenCramDeckOptions() {
+        if (!mLoadWithDeckOptions) {
+            return false;
+        }
+
+        openFilteredDeckOptions(true);
+        mLoadWithDeckOptions = false;
+        return true;
+    }
+
+    @VisibleForTesting()
+    static Spanned formatDescription(String desc) {
+        //#5715: In deck description, ignore what is in style and script tag
+        //Since we don't currently execute the JS/CSS, it's not worth displaying.
+        String withStrippedTags = Utils.stripHTMLScriptAndStyleTags(desc);
+        //#5188 - fromHtml displays newlines as " "
+        String withFixedNewlines = HtmlUtils.convertNewlinesToHtml(withStrippedTags);
+        return CompatHelper.getCompat().fromHtml(withFixedNewlines);
     }
 
     private Collection getCol() {

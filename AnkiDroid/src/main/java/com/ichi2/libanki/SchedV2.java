@@ -55,7 +55,6 @@ public class SchedV2 extends Sched {
 
     private String mName = "std";
     private boolean mHaveCustomStudy = true;
-    private boolean mBurySiblingsOnAnswer = true;
 
     private Collection mCol;
     private int mQueueLimit;
@@ -123,9 +122,6 @@ public class SchedV2 extends Sched {
         Card card = _getCard();
         if (card != null) {
             mCol.log(card);
-            if (!mBurySiblingsOnAnswer) {
-                _burySiblings(card);
-            }
             mReps += 1;
             card.startTimer();
             return card;
@@ -146,9 +142,7 @@ public class SchedV2 extends Sched {
     public void answerCard(Card card, int ease) {
         mCol.log();
         mCol.markReview(card);
-        if (mBurySiblingsOnAnswer) {
-            _burySiblings(card);
-        }
+        _burySiblings(card);
 
         _answerCard(card, ease);
 
@@ -375,6 +369,9 @@ public class SchedV2 extends Sched {
                 String p = Decks.parent(deck.getString("name"));
                 // new
                 int nlim = _deckNewLimitSingle(deck);
+                if (!TextUtils.isEmpty(p)) {
+                    nlim = Math.min(nlim, lims.get(p)[0]);
+                }
                 int _new = _newForDeck(deck.getLong("id"), nlim);
                 // learning
                 int lrn = _lrnForDeck(deck.getLong("id"));
@@ -2789,4 +2786,19 @@ public class SchedV2 extends Sched {
         mContextReference = contextReference;
     }
 
+    /** not in libAnki. Added due to #5666: inconsistent selected deck card counts on sync */
+    @Override
+    public int[] recalculateCounts() {
+        _resetLrnCount();
+        _resetNewCount();
+        _resetRevCount();
+        return new int[] { mNewCount, mLrnCount, mRevCount };
+    }
+
+    @Override
+    public void setReportLimit(int reportLimit) {
+        this.mReportLimit = reportLimit;
+    }
+
+    /** End #5666 */
 }

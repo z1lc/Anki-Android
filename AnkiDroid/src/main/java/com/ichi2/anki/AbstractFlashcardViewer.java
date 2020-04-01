@@ -107,7 +107,6 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
 import java.net.URLDecoder;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -1957,20 +1956,19 @@ public abstract class AbstractFlashcardViewer extends NavigationDrawerActivity {
             int newRevCount = 0;
             Sched sched = getCol().getSched();
             for (Long did : deckIds) {
-                youngRevCount += sched._youngRevCountForDeck(did);
+                youngRevCount += sched._criticalReviewCountForDeck(did);
                 learnRevCount += sched._lrnForDeck(did);
                 newRevCount += sched._newForDeck(did, sched._deckNewLimit(did));
             }
             int cardsLeft = youngRevCount + learnRevCount + newRevCount * 2;
             String cardsLeftPart;
             if (cardsLeft > 10) {
-                cardsLeftPart = String.format("%s critical", cardsLeft);
+                cardsLeft = (cardsLeft + 49) / 50 * 50;
+                cardsLeftPart = String.format("<%s critical", cardsLeft);
             } else {
                 cardsLeftPart = "\uD83D\uDC4D";
             }
-            String title = String.format("%s / %s skew",
-                    cardsLeftPart,
-                    new DecimalFormat("##.#%").format(sched._getAverageSkew(deckIds)));
+            String title = String.format("%s", cardsLeftPart);
             actionBar.setTitle(title);
             if (mPrefShowETA) {
                 int eta = mSched.eta(counts, false);

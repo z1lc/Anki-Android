@@ -398,7 +398,7 @@ public class Sched {
                     rlim = Math.min(rlim, lims.get(p)[1]);
                 }
                 int rev = _revForDeck(deck.getLong("id"), rlim);
-                int youngRevs = _youngRevCountForDeck(deck.getLong("id"));
+                int youngRevs = _criticalReviewCountForDeck(deck.getLong("id"));
                 // save to list
                 data.add(new DeckDueTreeNode(deck.getString("name"), deck.getLong("id"), rev, lrn, _new, youngRevs));
                 // add deck as a parent
@@ -492,7 +492,7 @@ public class Sched {
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
-            int youngRevCount = childrenYoungRev + _youngRevCountForDeck(did);
+            int youngRevCount = childrenYoungRev + _criticalReviewCountForDeck(did);
             tree.add(new DeckDueTreeNode(head, did, rev, lrn, _new, youngRevCount, children));
         }
         return tree;
@@ -566,7 +566,7 @@ public class Sched {
         _resetNewCount();
         mNewDids = new LinkedList<>(mCol.getDecks().active());
         mNewQueue.clear();
-        _updateNewCardRatio();
+        _updateNewCardRatio(_criticalReviewCountForDecks(mNewDids));
     }
 
 
@@ -628,17 +628,20 @@ public class Sched {
     }
 
 
-    private void _updateNewCardRatio() {
+    private void _updateNewCardRatio(int criticalReviewCount) {
         try {
             if (mCol.getConf().getInt("newSpread") == Consts.NEW_CARDS_DISTRIBUTE) {
                 if (mNewCount != 0) {
-                    mNewCardModulus = (mNewCount + mRevCount) / mNewCount;
-                    // if there are cards to review, ensure modulo >= 2
-                    if (mRevCount != 0) {
-                        mNewCardModulus = Math.max(2, mNewCardModulus);
+                    if (criticalReviewCount >= 2000) {
+                        // if we have a huge backlog, only show new cards rarely
+                        mNewCardModulus = 20;
+                    } else if (criticalReviewCount >= 500) {
+                        // slowly start showing new cards more frequently as we get through backlog
+                        mNewCardModulus = criticalReviewCount / 100;
+                    } else {
+                        //by default, show new cards every ~3-5 reviews
+                        mNewCardModulus = 3 + new Random().nextInt(3);
                     }
-                    //manually set new cards to show at least every 3-5 reviews
-                    mNewCardModulus = Math.min(3 + new Random().nextInt(3), mNewCardModulus);
                     return;
                 }
             }
@@ -1205,10 +1208,35 @@ public class Sched {
     	return mCol.getDb().queryScalar("SELECT count() FROM (SELECT 1 FROM cards WHERE did = " + did + " AND queue = 2 AND due <= " + mToday + " LIMIT " + lim + ")");
     }
 
-    public int _youngRevCountForDeck(long did) {
-        return mCol.getDb().queryScalar(
-            "SELECT COUNT(*) FROM cards WHERE did = " + did + " AND queue = 2 AND due <= " +
-                mToday + " AND ivl <= 21");
+    public int _criticalReviewCountForDecks(LinkedList<Long> dids) {
+        int total = 0;
+        for (long did : dids) {
+            total += _criticalReviewCountForDeck(did);
+        }
+        return total;
+    }
+
+    public int _criticalReviewCountForDeck(long did) {
+        return mCol.getDb().queryScalar(getCriticalReviewQueryGivenSelect("COUNT(*)", did));
+    }
+
+    public String getCriticalReviewQueryGivenSelect(String selectString, long did) {
+        // using DISTINCT because our join here is approximate (multiple revlog entries could match
+        // for the same card; using this join approach for performance)
+        return String.format("SELECT DISTINCT %s " +
+                        "FROM cards " +
+                        "JOIN revlog ON revlog.cid = cards.id AND revlog.factor = cards.factor AND revlog.ivl = cards.ivl " +
+                        "WHERE did = %s " +
+                        "AND queue = 2 " +
+                        "AND due <= %s " +
+                        // "A mature card is one that has an interval of 21 days or greater."
+                        "AND (revlog.ivl < 21 " +
+                        // days since last review divided by last interval
+                        "OR ((%s - due + revlog.ivl) / lastIvl) " +
+                        // divided by the card's current ease
+                        "/ ((1.0 * revlog.factor) / 1000) " +
+                        ">= 2.0)",
+                selectString, did, mToday, mToday);
     }
 
     public double _getAverageSkew(List<Long> deckIds) {
@@ -1284,26 +1312,23 @@ public class Sched {
             if (lim != 0) {
                 mRevQueue.clear();
                 //don't care about any limit with young cards; just want them all mixed
-                List<Long> maybeYoungCards = getCardIdsWithQuery(String.format("SELECT id " +
-                        "FROM cards " +
-                        "WHERE did = %s " +
-                        "AND queue = 2 " +
-                        "AND due <= %s " +
-                        "AND ivl < 21", did, mToday));
+                List<Long> maybeYoungCards = getCardIdsWithQuery(getCriticalReviewQueryGivenSelect("cards.id", did));
                 if (maybeYoungCards.size() > 0) {
                     mRevQueue.addAll(maybeYoungCards);
                 } else {
-                    List<Long> normalCards = getCardIdsWithQuery(String.format("SELECT id " +
+                    List<Long> normalCards = getCardIdsWithQuery(String.format(
+                            "SELECT DISTINCT cards.id " +
                             "FROM cards " +
+                            "JOIN revlog ON revlog.cid = cards.id AND revlog.factor = cards.factor AND revlog.ivl = cards.ivl " +
                             "WHERE did = %s " +
                             "AND queue = 2 " +
                             "AND due <= %s " +
-                            //first order by relative overdue-ness
-                            "ORDER BY (%s - due * 1.0) / ivl desc, " +
+                            //first order by relative overdue-ness; see getCriticalReviewQueryGivenSelect
+                            "ORDER BY ((%s - due + revlog.ivl) / lastIvl) / ((1.0 * revlog.factor) / 1000) desc, " +
                             //then by interval
-                            "ivl asc, " +
+                            "revlog.ivl asc, " +
                             //finally, prefer cards created more recently
-                            "id desc " +
+                            "cards.id desc " +
                             "LIMIT %s", did, mToday, mToday, lim));
                     mRevQueue.addAll(normalCards);
                 }

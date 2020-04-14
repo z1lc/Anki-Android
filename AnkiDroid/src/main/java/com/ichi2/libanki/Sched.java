@@ -398,9 +398,9 @@ public class Sched {
                     rlim = Math.min(rlim, lims.get(p)[1]);
                 }
                 int rev = _revForDeck(deck.getLong("id"), rlim);
-                int youngRevs = _criticalReviewCountForDeck(deck.getLong("id"));
+                int criticalRevs = _criticalReviewCountForDeck(deck.getLong("id"));
                 // save to list
-                data.add(new DeckDueTreeNode(deck.getString("name"), deck.getLong("id"), rev, lrn, _new, youngRevs));
+                data.add(new DeckDueTreeNode(deck.getString("name"), deck.getLong("id"), rev, lrn, _new, criticalRevs));
                 // add deck as a parent
                 lims.put(deck.getString("name"), new Integer[]{nlim, rlim});
             }
@@ -632,12 +632,9 @@ public class Sched {
         try {
             if (mCol.getConf().getInt("newSpread") == Consts.NEW_CARDS_DISTRIBUTE) {
                 if (mNewCount != 0) {
-                    if (criticalReviewCount >= 2000) {
-                        // if we have a huge backlog, only show new cards rarely
-                        mNewCardModulus = 20;
-                    } else if (criticalReviewCount >= 500) {
-                        // slowly start showing new cards more frequently as we get through backlog
-                        mNewCardModulus = criticalReviewCount / 100;
+                    if (criticalReviewCount >= 300) {
+                        // show new cards in proportion to how many critical reviews are left
+                        mNewCardModulus = criticalReviewCount / 100 * 2;
                     } else {
                         //by default, show new cards every ~3-5 reviews
                         mNewCardModulus = 3 + new Random().nextInt(3);

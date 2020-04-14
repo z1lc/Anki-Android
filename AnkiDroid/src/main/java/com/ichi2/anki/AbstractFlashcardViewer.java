@@ -1951,16 +1951,16 @@ public abstract class AbstractFlashcardViewer extends NavigationDrawerActivity {
             List<Long> deckIds = new ArrayList<>(getCol().getDecks().children(currentDeckId).values());
             deckIds.add(currentDeckId);
 
-            int youngRevCount = 0;
+            int criticalRevCount = 0;
             int learnRevCount = 0;
             int newRevCount = 0;
             Sched sched = getCol().getSched();
             for (Long did : deckIds) {
-                youngRevCount += sched._criticalReviewCountForDeck(did);
+                criticalRevCount += sched._criticalReviewCountForDeck(did);
                 learnRevCount += sched._lrnForDeck(did);
                 newRevCount += sched._newForDeck(did, sched._deckNewLimit(did));
             }
-            int cardsLeft = youngRevCount + learnRevCount + newRevCount * 2;
+            int cardsLeft = criticalRevCount + learnRevCount + newRevCount * 2;
             String cardsLeftPart;
             if (cardsLeft > 10) {
                 cardsLeft = (cardsLeft + 49) / 50 * 50;

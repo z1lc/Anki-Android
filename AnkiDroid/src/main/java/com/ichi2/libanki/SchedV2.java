@@ -384,9 +384,9 @@ public class SchedV2 extends Sched {
                 }
                 int rlim = _deckRevLimitSingle(deck, plim);
                 int rev = _revForDeck(deck.getLong("id"), rlim, childMap);
-                int youngRevCountForDeck = _youngRevCountForDeck(deck.getLong("id"));
+                int criticalReviewCountForDeck = _criticalReviewCountForDeck(deck.getLong("id"));
                 // save to list
-                data.add(new DeckDueTreeNode(deck.getString("name"), deck.getLong("id"), rev, lrn, _new, youngRevCountForDeck));
+                data.add(new DeckDueTreeNode(deck.getString("name"), deck.getLong("id"), rev, lrn, _new, criticalReviewCountForDeck));
                 // add deck as a parent
                 lims.put(deck.getString("name"), new Integer[]{nlim, rlim});
             }
@@ -474,7 +474,7 @@ public class SchedV2 extends Sched {
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
-            int youngRevCountForDeck = _youngRevCountForDeck(did);
+            int youngRevCountForDeck = _criticalReviewCountForDeck(did);
             tree.add(new DeckDueTreeNode(head, did, rev, lrn, _new, youngRevCountForDeck, children));
         }
         return tree;

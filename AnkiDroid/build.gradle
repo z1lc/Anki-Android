@@ -13,12 +13,6 @@ repositories {
 }
 def homePath = System.properties['user.home']
 
-configurations {
-    all {
-        exclude module: 'httpclient'
-    }
-}
-
 android {
     compileSdkVersion 28
 
@@ -37,6 +31,7 @@ android {
             timeOutInMs 20 * 60 * 1000  // 20 minutes
             DdmPreferences.setTimeOut(120000) // apparently if not multidex you do this
         }
+        resConfigs "en"
     }
     lintOptions {
         abortOnError false

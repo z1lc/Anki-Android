@@ -183,6 +183,7 @@ public abstract class AbstractFlashcardViewer extends NavigationDrawerActivity {
     /**
      * Variables to hold preferences
      */
+    private boolean mPrefShowYoungCards;
     private boolean mPrefHideDueCount;
     private boolean mPrefShowETA;
     private boolean mShowTimer;
@@ -1817,6 +1818,7 @@ public abstract class AbstractFlashcardViewer extends NavigationDrawerActivity {
     protected SharedPreferences restorePreferences() {
         SharedPreferences preferences = AnkiDroidApp.getSharedPrefs(getBaseContext());
 
+        mPrefShowYoungCards = preferences.getBoolean(this.getString(R.string.pref_young_cards_due), false);
         mPrefHideDueCount = preferences.getBoolean("hideDueCount", false);
         mPrefShowETA = preferences.getBoolean("showETA", true);
         mUseInputTag = preferences.getBoolean("useInputTag", false);
@@ -1951,24 +1953,27 @@ public abstract class AbstractFlashcardViewer extends NavigationDrawerActivity {
             List<Long> deckIds = new ArrayList<>(getCol().getDecks().children(currentDeckId).values());
             deckIds.add(currentDeckId);
 
-            int criticalRevCount = 0;
-            int learnRevCount = 0;
-            int newRevCount = 0;
-            Sched sched = getCol().getSched();
-            for (Long did : deckIds) {
-                criticalRevCount += sched._criticalReviewCountForDeck(did);
-                learnRevCount += sched._lrnForDeck(did);
-                newRevCount += sched._newForDeck(did, sched._deckNewLimit(did));
+            String title = "";
+            if (mPrefShowYoungCards) {
+                int criticalRevCount = 0;
+                int learnRevCount = 0;
+                int newRevCount = 0;
+                Sched sched = getCol().getSched();
+                for (Long did : deckIds) {
+                    criticalRevCount += sched._criticalReviewCountForDeck(did);
+                    learnRevCount += sched._lrnForDeck(did);
+                    newRevCount += sched._newForDeck(did, sched._deckNewLimit(did));
+                }
+                int cardsLeft = criticalRevCount + learnRevCount + newRevCount * 2;
+                String cardsLeftPart;
+                if (cardsLeft > 10) {
+                    cardsLeft = (cardsLeft + 49) / 50 * 50;
+                    cardsLeftPart = String.format("<%s critical", cardsLeft);
+                } else {
+                    cardsLeftPart = "\uD83D\uDC4D";
+                }
+                title = String.format("%s", cardsLeftPart);
             }
-            int cardsLeft = criticalRevCount + learnRevCount + newRevCount * 2;
-            String cardsLeftPart;
-            if (cardsLeft > 10) {
-                cardsLeft = (cardsLeft + 49) / 50 * 50;
-                cardsLeftPart = String.format("<%s critical", cardsLeft);
-            } else {
-                cardsLeftPart = "\uD83D\uDC4D";
-            }
-            String title = String.format("%s", cardsLeftPart);
             actionBar.setTitle(title);
             if (mPrefShowETA) {
                 int eta = mSched.eta(counts, false);

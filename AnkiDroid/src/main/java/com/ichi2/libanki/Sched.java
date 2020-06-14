@@ -566,7 +566,7 @@ public class Sched {
         _resetNewCount();
         mNewDids = new LinkedList<>(mCol.getDecks().active());
         mNewQueue.clear();
-        _updateNewCardRatio(_criticalReviewCountForDecks(mNewDids));
+        _updateNewCardRatio();
     }
 
 
@@ -627,17 +627,58 @@ public class Sched {
         return null;
     }
 
+    /* In general, we have two types of decks:
+     (1) Decks that we consistently finish all reviews, as originally scheduled.
+     (2) Decks that we do whenever we have time, and so rarely (if ever) finish scheduled reviews.
 
-    private void _updateNewCardRatio(int criticalReviewCount) {
+    These decks need to be handled separately. For (1) decks, we can be assured that we'll finish
+    all reviews and all new cards ~every day, so we can use the default Anki algorithm to spread
+    new cards throughout the session.
+    For (2) decks, however, we need to be more careful about introducing new cards. We cannot be
+    sure when we'll "catch up" to all reviews, so it is difficult to choose a new card introduction
+    rate that does not dig us into a hole of a bigger and bigger backlog, and therefore, harder and
+    harder reviews (lower retention). Hence, we inspect the recent deck-specific mature retention
+    to inform how many new cards we should introduce. Since it becomes quite toilsome to get through
+    reviews once retention drops below 80%, we really want to stop adding new cards once we get
+    lower than this point. We'd also like to avoid retentions in excess of 85%, as in that case,
+    we're going to be spending too much time on retaining information relative to how much new stuff
+    we could be learning.
+
+    Below, we infer which class of decks we belong to based upon how many reviews are currently in
+    the backlog. If the backlog is over 500 reviews, we're likely to be in a deck that we don't need
+    to finish on a daily basis.
+    */
+    private void _updateNewCardRatio() {
+        double recentMatureRetention = _getLastNMatureRetention(mNewDids, 1000L);
+        int totalReviewsLeft = _revForDecks(mNewDids);
         try {
             if (mCol.getConf().getInt("newSpread") == Consts.NEW_CARDS_DISTRIBUTE) {
                 if (mNewCount != 0) {
-                    if (criticalReviewCount >= 300) {
-                        // show new cards in proportion to how many critical reviews are left
-                        mNewCardModulus = criticalReviewCount / 100 * 2;
-                    } else {
-                        //by default, show new cards every ~3-5 reviews
-                        mNewCardModulus = 3 + new Random().nextInt(3);
+                    //by default, spread reviews across the session
+                    mNewCardModulus = (mNewCount + mRevCount) / mNewCount;
+
+                    if (totalReviewsLeft >= 500) {
+                        if (recentMatureRetention < 0.78) {
+                            mNewCardModulus = 1000;
+                        } else if (recentMatureRetention < 0.79) {
+                            mNewCardModulus = 40;
+                        } else if (recentMatureRetention < 0.8) {
+                            mNewCardModulus = 30;
+                        } else if (recentMatureRetention < 0.81) {
+                            mNewCardModulus = 20;
+                        } else if (recentMatureRetention < 0.82) {
+                            mNewCardModulus = 15;
+                        } else if (recentMatureRetention < 0.83) {
+                            mNewCardModulus = 10;
+                        } else if (recentMatureRetention < 0.84) {
+                            mNewCardModulus = 7;
+                        } else if (recentMatureRetention < 0.85) {
+                            mNewCardModulus = 5;
+                        } else if (recentMatureRetention < 0.87) {
+                            mNewCardModulus = 3;
+                        } else {
+                            mNewCardModulus = 2;
+                        }
                     }
                     return;
                 }
@@ -1199,6 +1240,13 @@ public class Sched {
         }
     }
 
+    public int _revForDecks(LinkedList<Long> dids) {
+        int total = 0;
+        for (long did : dids) {
+            total += _revForDeck(did, 1000);
+        }
+        return total;
+    }
 
     public int _revForDeck(long did, int lim) {
     	lim = Math.min(lim, mReportLimit);
@@ -1234,6 +1282,20 @@ public class Sched {
                         "/ ((1.0 * revlog.factor) / 1000) " +
                         ">= 2.0)",
                 selectString, did, mToday, mToday);
+    }
+
+    public double _getLastNMatureRetention(List<Long> deckIds, Long n) {
+        return mCol.getDb().queryDouble(String.format(
+                "WITH last_n_reviews AS (\n" +
+                        "SELECT CASE WHEN ease >= 2 THEN 1 ELSE 0 END AS correct\n" +
+                        "FROM revlog\n" +
+                        "JOIN cards on revlog.cid = cards.id\n" +
+                        "WHERE did IN %s AND lastIvl >= 21\n" +
+                        "ORDER BY revlog.id DESC\n" +
+                        "LIMIT %s)\n" +
+                        "SELECT AVG(correct)\n" +
+                        "FROM last_n_reviews", Utils.ids2str(deckIds), n)
+        );
     }
 
     public double _getAverageSkew(List<Long> deckIds) {

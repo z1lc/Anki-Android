@@ -15,6 +15,8 @@
  ****************************************************************************************/
 package com.ichi2.anki.stats;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.os.AsyncTask;
@@ -23,6 +25,7 @@ import android.webkit.WebView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.ichi2.anki.AnkiDroidApp;
 import com.ichi2.anki.R;
 import com.ichi2.libanki.Collection;
 import com.ichi2.libanki.Stats;
@@ -241,11 +244,18 @@ public class AnkiStatsTaskHandler {
 
         @Override
         protected void onPostExecute(String todayStatString) {
+            updateTodayReviewSummaryVisibility(mTextView);
             if (todayStatString != null && mIsRunning) {
                 mTextView.setText(todayStatString);
-                mTextView.setVisibility(View.VISIBLE);
                 mTextView.invalidate();
             }
+        }
+
+        private void updateTodayReviewSummaryVisibility(TextView summaryTextView) {
+            Context context = summaryTextView.getContext();
+            SharedPreferences prefs = AnkiDroidApp.getSharedPrefs(context);
+            boolean shouldShowTodaySummaryStats = prefs.getBoolean(context.getString(R.string.pref_show_review_time), true);
+            summaryTextView.setVisibility(shouldShowTodaySummaryStats ? View.VISIBLE : View.INVISIBLE);
         }
     }
 

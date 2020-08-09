@@ -72,5 +72,10 @@
             android:key="@string/pref_young_cards_due"
             android:summary="@string/show_critical_cards_due_summary"
             android:title="@string/show_critical_cards_due_title" />
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="@string/pref_show_review_time"
+            android:summary="@string/show_review_time_summary"
+            android:title="@string/show_review_time_title" />
     </PreferenceCategory>
 </PreferenceScreen>
